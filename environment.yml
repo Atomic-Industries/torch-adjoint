@@ -1,8 +1,0 @@
-channels:
-    - conda-forge
-    - pytorch
-dependencies:
-    - fenics
-    - pytorch
-    - pytest
-

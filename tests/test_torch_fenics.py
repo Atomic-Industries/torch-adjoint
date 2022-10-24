@@ -6,10 +6,10 @@ from fenics_adjoint import *
 import torch
 import numpy as np
 
-import torch_fenics
+import torch_firedrake
 
 
-class Squares(torch_fenics.FEniCSModule):
+class Squares(torch_firedrake.FEniCSModule):
     def __init__(self):
         super(Squares, self).__init__()
         mesh = IntervalMesh(4, 0, 1)
@@ -31,7 +31,7 @@ class Squares(torch_fenics.FEniCSModule):
         return Function(self.V), Function(self.V)
 
 
-class Poisson(torch_fenics.FEniCSModule):
+class Poisson(torch_firedrake.FEniCSModule):
     def __init__(self):
         super(Poisson, self).__init__()
         mesh = UnitSquareMesh(10, 10)
@@ -55,7 +55,7 @@ class Poisson(torch_fenics.FEniCSModule):
         return Constant(0), Constant(0)
 
 
-class DoublePoisson(torch_fenics.FEniCSModule):
+class DoublePoisson(torch_firedrake.FEniCSModule):
     def __init__(self):
         super(DoublePoisson, self).__init__()
         mesh = UnitIntervalMesh(10)
@@ -82,7 +82,7 @@ class DoublePoisson(torch_fenics.FEniCSModule):
         return Constant(0), Constant(0)
 
 
-class Stokes(torch_fenics.FEniCSModule):
+class Stokes(torch_firedrake.FEniCSModule):
     def __init__(self):
         super(Stokes, self).__init__()
         mesh = UnitSquareMesh(3, 3)
