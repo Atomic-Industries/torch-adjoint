@@ -1,26 +1,23 @@
 import torch
-# Import fenics and override necessary data structures with fenics_adjoint
-from fenics import *
-from fenics_adjoint import *
+import firedrake as fd
 
-import torch_firedrake
+from ufl import inner, grad, dx
+from torch_firedrake import FiredrakeModule
 
-
-# Declare the FEniCS model corresponding to solving the Poisson equation
+# Declare the model corresponding to solving the Poisson equation
 # with variable source term and boundary value
-class Poisson(torch_firedrake.FEniCSModule):
+class Poisson(FiredrakeModule):
     # Construct variables which can be reused in the constructor
     def __init__(self):
-        # Call super constructor
         super().__init__()
 
         # Create function space
-        mesh = UnitIntervalMesh(20)
-        self.V = FunctionSpace(mesh, 'P', 1)
+        mesh = fd.UnitIntervalMesh(20)
+        self.V = fd.FunctionSpace(mesh, 'P', 1)
 
         # Create trial and test functions
-        u = TrialFunction(self.V)
-        self.v = TestFunction(self.V)
+        u = fd.TrialFunction(self.V)
+        self.v = fd.TestFunction(self.V)
 
         # Construct bilinear form
         self.a = inner(grad(u), grad(self.v)) * dx
@@ -30,38 +27,36 @@ class Poisson(torch_firedrake.FEniCSModule):
         L = f * self.v * dx
 
         # Construct boundary condition
-        bc = DirichletBC(self.V, g, 'on_boundary')
+        bc = fd.DirichletBC(self.V, g, 'on_boundary')
 
         # Solve the Poisson equation
-        u = Function(self.V)
-        solve(self.a == L, u, bc)
+        u = fd.Function(self.V)
+        fd.solve(self.a == L, u, bc)
 
-        # Return the solution
-        return u
+        # Return the functional (could also return `u`)
+        return fd.assemble(inner(u, u)*dx)
 
     def input_templates(self):
         # Declare templates for the inputs to Poisson.solve
-        return Constant(0), Constant(0)
+        return fd.Constant(0, domain=self.V.ufl_domain()), fd.Constant(0, domain=self.V.ufl_domain())
 
 
 if __name__ == '__main__':
-    # Construct the FEniCS model
-    poisson = Poisson()
+    # Construct the Firedrake model
+    model = Poisson()
 
-    # Create N sets of input
+    # Create N sets of input (Poisson will be solved N times)
     N = 10
     f = torch.rand(N, 1, requires_grad=True, dtype=torch.float64)
     g = torch.rand(N, 1, requires_grad=True, dtype=torch.float64)
 
-    # Solve the Poisson equation N times
-    u = poisson(f, g)
+    # Solve Poisson N times and take the mean
+    J = model(f, g).mean()
 
-    # Construct functional
-    J = u.sum()
-
-    # Execute the backward pass
+    # Compute gradients with backwards pass
     J.backward()
-
-    # Extract gradients
     dJdf = f.grad
     dJdg = g.grad
+
+    print(dJdf)
+    print(dJdg)

@@ -1,1 +1,2 @@
-from .torch_firedrake import Module
+from .torch_firedrake import FiredrakeModule
+from . import util
