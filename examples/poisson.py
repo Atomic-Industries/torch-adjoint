@@ -2,7 +2,7 @@ import torch
 import firedrake as fd
 
 from ufl import inner, grad, dx
-from torch_firedrake import FiredrakeModule
+from torch_adjoint import FiredrakeModule
 
 # Declare the model corresponding to solving the Poisson equation
 # with variable source term and boundary value

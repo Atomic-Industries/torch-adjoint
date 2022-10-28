@@ -15,11 +15,11 @@ class SolveFunction(torch.autograd.Function):
         """Computes the output of the FEA model and saves a corresponding gradient tape
 
         Input:
-            fenics_solver (FEniCSSolver): FEniCSSolver to be executed during the forward pass
-            args (tuple): tensor representation of the input to fenics_solver.forward
+            solver (NonlinearVariationalSolver): Firedrake solver to be executed during the forward pass
+            args (tuple): tensor representation of the input to solver.forward
 
         Output:
-            tensor representation of the output from fenics_solver.solve
+            tensor representation of the output from solver.solve
         """
         # Check that the number of inputs arguments is correct
         n_args = len(args)
@@ -89,6 +89,7 @@ class SolveFunction(torch.autograd.Function):
         for firedrake_output, adj_value in zip(ctx.firedrake_outputs, adj_values):
             firedrake_grads = pyadjoint.compute_gradient(firedrake_output, controls,
                                                            tape=ctx.tape, adj_value=adj_value)
+
 
             # Convert gradients to tensor representation
             numpy_grads = [g if g is None else torch.from_numpy(to_numpy(g)) for g in firedrake_grads]

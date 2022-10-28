@@ -6,8 +6,9 @@ import firedrake_adjoint as fda
 import torch
 import numpy as np
 
-from torch_firedrake import FiredrakeModule
+from torch_adjoint import FiredrakeModule
 from ufl import dx, inner, grad, div, sin, pi
+from pyadjoint import create_overloaded_object
 
 class Squares(FiredrakeModule):
     def __init__(self):
@@ -111,53 +112,10 @@ class Stokes(FiredrakeModule):
         self.bcs = [noslip_bc, inflow_bc, outlet_bc]
 
     def input_templates(self):
-        return fd.Constant((0, 0), domain=self.W.ufl_domain())
+        return create_overloaded_object(np.array([0, 0]))
 
     def solve(self, f):
-        u, p = fd.TrialFunctions(self.W)
-        v, q = fd.TestFunctions(self.W)
-        a = (inner(grad(u), grad(v)) - div(v) * p + q * div(u)) * dx
-        L = inner(f, v) * dx
-
-        w = fd.Function(self.W)
-        fd.solve(a == L, w, self.bcs)
-
-        # # TODO: Temporary workaround instead of using w.split()
-        # u, p = fd.split(w)
-        # u = fd.project(u, self.V)
-        # p = fd.project(p, self.Q)
-
-        u, p = w.split()
-
-        print(u.dat.data[:].shape)
-        # return u, p
-        return fd.assemble(inner(p, p)*dx)
-
-class Stokes(FiredrakeModule):
-    def __init__(self):
-        super(Stokes, self).__init__()
-        mesh = fd.UnitSquareMesh(3, 3)
-
-        self.V = fd.VectorFunctionSpace(mesh, 'CG', 2)
-        self.Q = fd.FunctionSpace(mesh, 'CG', 1)
-        self.W = self.V * self.Q
-
-        self.V, self.Q = self.W.split()
-
-        noslip_bc = fd.DirichletBC(self.V, fd.Constant((0, 0)), (3, 4))
-
-        x, y = fd.SpatialCoordinate(mesh)
-        inflow_bc = fd.DirichletBC(self.V, (-sin(y*pi), 0.0), 1)
-        outlet_bc = fd.DirichletBC(self.Q, fd.Constant(0), 2)
-
-        self.bcs = [noslip_bc, inflow_bc, outlet_bc]
-
-    def input_templates(self):
-        return fd.Constant(0, domain=self.W.ufl_domain()), fd.Constant(0, domain=self.W.ufl_domain())
-
-
-    def solve(self, fx, fy):
-        f = fx*fd.Constant((1, 0)) + fy*fd.Constant((0, 1))
+        f = fd.Constant(f[0])*fd.Constant((1, 0)) + fd.Constant(f[1])*fd.Constant((0, 1))
         u, p = fd.TrialFunctions(self.W)
         v, q = fd.TestFunctions(self.W)
         a = (inner(grad(u), grad(v)) - div(v) * p + q * div(u)) * dx
@@ -167,7 +125,6 @@ class Stokes(FiredrakeModule):
         fd.solve(a == L, w, self.bcs)
 
         u, p = w.split()
-        # return u, p
         return fd.assemble(inner(u, u)*dx)
 
 def test_squares():
@@ -202,15 +159,21 @@ def test_doublepoisson():
     double_poisson = DoublePoisson()
     assert torch.autograd.gradcheck(double_poisson, (f1, f2))
 
-
 @pytest.mark.skipif(fd.COMM_WORLD.size > 1, reason='Running with MPI')
 def test_stokes():
-    # TODO: Handle vector-valued inputs with overloaded types
-    fx = torch.tensor([[1.0]], requires_grad=True, dtype=torch.float64)
-    fy = torch.tensor([[1.0]], requires_grad=True, dtype=torch.float64)
+    f = torch.tensor([[1.0, 1.0]], requires_grad=True, dtype=torch.float64)
     stokes = Stokes()
-    assert torch.autograd.gradcheck(stokes, (fx, fy))
+    assert torch.autograd.gradcheck(stokes, (f,))
 
+@pytest.mark.skipif(fd.COMM_WORLD.size > 1, reason='Running with MPI')
+def test_stokes_pyadjoint():
+    stokes = Stokes()
+    f = stokes.input_templates()
+    f[:] = np.array([1, 1])
+    J = stokes.solve(f)
+    dJdm = fda.compute_gradient(J, fda.Control(f))
+    print(dJdm)
+    
 
 @pytest.mark.skipif(fd.COMM_WORLD.size > 1, reason='Running with MPI')
 def test_input_type():
@@ -230,3 +193,7 @@ def test_input_type():
         f = torch.tensor([[1.0]]).float()
         g = torch.tensor([[0.0]]).float()
         poisson(f, g)
+
+
+if __name__=="__main__":
+    test_stokes_pyadjoint()

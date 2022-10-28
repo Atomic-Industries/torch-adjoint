@@ -1,11 +1,13 @@
 import firedrake as fd
 import firedrake_adjoint as fda
 import numpy as np
+import pyadjoint
 
 from firedrake.functionspaceimpl import MixedFunctionSpace
 
 def to_numpy(q):
     """Convert variable `q` to numpy array"""
+    print(q)
 
     if isinstance(q, (fd.Constant, fd.Function)):
         return q.dat.data[:]
@@ -13,13 +15,13 @@ def to_numpy(q):
     if isinstance(q, fda.AdjFloat):
         return np.array(float(q), dtype=np.float_)
 
+    if isinstance(q, np.ndarray):
+        return q
+
     raise ValueError('Cannot convert ' + str(type(q)))
 
 def to_firedrake(x, var_template):
-    """Convert numpy array to FEniCS variable"""
-
-    if isinstance(var_template, fda.AdjFloat):
-        return fda.AdjFloat(x)
+    """Convert numpy array to Firedrake variable"""
 
     if isinstance(var_template, fd.Constant):
         if x.shape == (1,):
@@ -37,6 +39,12 @@ def to_firedrake(x, var_template):
             u.dat.data[:] = x
             
         return u
+
+    if isinstance(var_template, pyadjoint.AdjFloat):
+        return pyadjoint.AdjFloat(x)
+
+    if isinstance(var_template, np.ndarray):
+        return pyadjoint.create_overloaded_object(np.array(x, dtype=np.float_))
 
     err_msg = 'Cannot convert numpy array to {}'.format(var_template)
     raise ValueError(err_msg)
