@@ -4,7 +4,7 @@ import firedrake_adjoint as fda
 import torch_adjoint as fdt
 import numpy as np
 
-from pyadjoint import create_overloaded_object
+import pytest
 
 mesh = fd.UnitSquareMesh(10, 10)
 
@@ -51,3 +51,32 @@ def test_convert_array():
     assert isinstance(p, type(q))
     assert np.allclose(q, p)
 
+@pytest.mark.parallel(nprocs=2)
+def test_gather_scalar():
+    N = 10
+    mesh = fd.UnitSquareMesh(N, N)
+    x = fd.SpatialCoordinate(mesh)
+
+    V = fd.FunctionSpace(mesh, 'CG', 1)
+    u = fd.interpolate(x[0], V)
+
+    u0 = fdt.util.gather(u, to_rank=0)
+    u0.array *= 2.0  # Scale the data to check proper transformation
+
+    uN = fdt.util.scatter(u0, u, from_rank=0)
+    assert np.allclose(u.dat.data_ro_with_halos[:], 0.5*uN.dat.data_ro_with_halos[:])
+
+@pytest.mark.parallel(nprocs=2)
+def test_gather_vector():
+    N = 10
+    mesh = fd.UnitSquareMesh(N, N)
+    x = fd.SpatialCoordinate(mesh)
+
+    V = fd.VectorFunctionSpace(mesh, 'CG', 1)
+    u = fd.interpolate(x, V)
+
+    u0 = fdt.util.gather(u, to_rank=0)
+    u0.array *= 2.0  # Scale the data to check proper transformation
+
+    uN = fdt.util.scatter(u0, u, from_rank=0)
+    assert np.allclose(u.dat.data_ro_with_halos[:], 0.5*uN.dat.data_ro_with_halos[:])
