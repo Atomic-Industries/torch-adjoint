@@ -7,12 +7,6 @@ from firedrake.petsc import PETSc
 from firedrake.functionspaceimpl import MixedFunctionSpace
 
 
-def parprint(s, rank=None):
-    if rank is not None:
-        if fd.COMM_WORLD.rank != rank: return
-    PETSc.Sys.Print(f"Rank {fd.COMM_WORLD.rank}: " + str(s), comm=fd.COMM_SELF)
-
-
 def gather(f, to_rank=None):
     """Gather a `Function` to all processes (or a specified rank)
 
@@ -21,7 +15,6 @@ def gather(f, to_rank=None):
     N = f.vector().size()
     if to_rank is not None and PETSc.COMM_WORLD.rank != to_rank:
         N = 0
-    parprint(N)
     
     v = PETSc.Vec().createSeq(N, comm=PETSc.COMM_SELF)
     is_ = PETSc.IS().createStride(N, 0, 1, comm=PETSc.COMM_SELF)
@@ -33,6 +26,11 @@ def gather(f, to_rank=None):
     return v.array
 
 def gather_and_reshape(q):
+    """Combine a gather operation with a reshape to match the underlying data.
+
+    Note this should not be called directly if q belongs to a MixedFunctionSpace
+    (instead call separately for each subspace).
+    """
     x = gather(q, to_rank=0)
     return np.reshape(x, [-1, *q.function_space().shape])
 
@@ -58,6 +56,10 @@ def scatter(x, function_template, from_rank=None):
     return u_out
 
 def reshape_and_scatter(x, q):
+    """Inverse of `gather_and_reshape`.
+    
+    See note on MixedFunctionSpaces
+    """
     qN = scatter(x.ravel(), q, from_rank=0)  # Copy of Function q with data from x
     return qN.dat.data[:]
 
