@@ -1,7 +1,7 @@
-# Torch-adjoint
+# Torch-Adjoint
 
 This is a fork of Torch-FEniCS modified for [Firedrake](https://www.firedrakeproject.org/) and MPI-parallelization.
-The `torch-adjoint` package enables models defined in Firedrake (https://fenicsproject.org) to be used as modules in [PyTorch](https://pytorch.org/).
+The `torch-adjoint` package enables models defined in Firedrake to be used as modules in [PyTorch](https://pytorch.org/).
 
 ## Install
 
