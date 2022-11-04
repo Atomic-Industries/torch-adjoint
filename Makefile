@@ -11,6 +11,3 @@ build:
 
 bash:
 	@$(run) bash
-
-test:
-	@$(run) pytest -n 4

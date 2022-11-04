@@ -1,83 +1,83 @@
-# Torch-FEniCS
+# Torch-adjoint
 
-The `torch-fenics` package enables models defined in [FEniCS](https://fenicsproject.org) to be used as modules in
- [PyTorch](https://pytorch.org/).
+This is a fork of Torch-FEniCS modified for [Firedrake](https://www.firedrakeproject.org/) and MPI-parallelization.
+The `torch-adjoint` package enables models defined in Firedrake (https://fenicsproject.org) to be used as modules in [PyTorch](https://pytorch.org/).
 
 ## Install
 
-[Install FEniCS](https://fenicsproject.org/download/) and run
+[Install Firedrake](https://https://www.firedrakeproject.org/download.html) and run
 
 ```bash
-pip install git+https://github.com/barkm/torch-fenics.git@master
+pip install git+https://github.com/Atomic-Industries/torch-adjoint.git@master
 ```
 
-A clean install of the package and its dependencies can for example be done with [Conda](https://conda.io/docs/)
-
-```bash
-conda create --name torch-fenics
-conda activate torch-fenics
-conda install -c conda-forge fenics
-pip install git+https://github.com/barkm/torch-fenics.git@master
-```
+Alternatively, a simple Dockerfile is also provided that builds off the official Firedrake images.
+This can be built and run with `make build && make bash`.  Be sure to activate the Firedrake virtual environment
+with `source activate /home/firedrake/firedrake/bin/activate`.
 
 ## Details
 
-FEniCS objects are represented in PyTorch using their corresponding vector representation. For 
-finite element functions this corresponds to their coefficient representation. 
+Firedrake objects are represented in PyTorch using their corresponding vector representation. For 
+finite element functions this corresponds to their coefficient representation.
+This package interfaces between the automatic differentiation frameworks in
+[`dolfin-adjoint`](http://www.dolfin-adjoint.org/en/latest/) and PyTorch so that the gradient tapes
+can understand each other.  See `torch_adjoint.SolveFunction.backward()` for the core logic that does this.
 
-The package relies on [`dolfin-adjoint`](http://www.dolfin-adjoint.org/en/latest/) in order for the FEniCS module to be compatible with the
-automatic differentiation framework in PyTorch
+The package currently handles MPI-parallelization only on the Firedrake side.  That is, Firedrake distributes mesh nodes
+across processors, and then `torch-adjoint` gathers the data back to rank-0, where all of the PyTorch tensors (including
+model parameters) live.  This means that there must be enough memory available to the rank-0 process to hold all the
+Firedrake data.  Support for distributed training with MPI and PyTorch is planned in the future.
 
 ## Example
 
-The `torch-fenics` package can for example be used to define a PyTorch module which solves the Poisson
-equation using FEniCS.
+The `torch-adjoint` package can for example be used to define a PyTorch module which solves the Poisson
+equation using Firedrake.
 
-The process of solving the Poisson equation in FEniCS can be specified as a PyTorch module by deriving the `torch_fenics.FEniCSModule` class
+The process of solving the Poisson equation in Firedrake can be specified as a PyTorch module by subclassing `torch_adjoint.FiredrakeModule`
 
 ```python
-# Import fenics and override necessary data structures with fenics_adjoint
-from fenics import *
-from fenics_adjoint import *
+# Import PyTorch, Firedrake and useful math from UFL
+import torch
+import firedrake as fd
+from ufl import inner, grad, dx
 
-import torch_fenics
+from torch_adjoint import FiredrakeModule
 
-# Declare the FEniCS model corresponding to solving the Poisson equation
+# Declare the Firedrake model corresponding to solving the Poisson equation
 # with variable source term and boundary value
-class Poisson(torch_fenics.FEniCSModule):
-    # Construct variables which can be in the constructor
+class Poisson(FiredrakeModule):
     def __init__(self):
-        # Call super constructor
         super().__init__()
 
         # Create function space
-        mesh = UnitIntervalMesh(20)
-        self.V = FunctionSpace(mesh, 'P', 1)
+        mesh = fd.UnitIntervalMesh(20)
+        self.V = fd.FunctionSpace(mesh, 'CG', 1)
 
         # Create trial and test functions
-        u = TrialFunction(self.V)
-        self.v = TestFunction(self.V)
+        u = fd.TrialFunction(self.V)
+        self.v = fd.TestFunction(self.V)
 
         # Construct bilinear form
         self.a = inner(grad(u), grad(self.v)) * dx
 
     def solve(self, f, g):
-        # Construct linear form
+        # Construct linear form from input
         L = f * self.v * dx
 
-        # Construct boundary condition
-        bc = DirichletBC(self.V, g, 'on_boundary')
+        # Construct boundary condition from input
+        bc = fd.DirichletBC(self.V, g, 'on_boundary')
 
         # Solve the Poisson equation
-        u = Function(self.V)
-        solve(self.a == L, u, bc)
+        u = fd.Function(self.V)
+        fd.solve(self.a == L, u, bc)
 
-        # Return the solution
         return u
 
     def input_templates(self):
-        # Declare templates for the inputs to Poisson.solve
-        return Constant(0), Constant(0)
+        # Declare templates for the inputs to Poisson.solve.
+        #   Note that for constants the the mesh has to be passed to the constructor
+        #   In order for UFL to recognize the domain the constant belongs to.
+        return fd.Constant(0, domain=self.V.ufl_domain()), fd.Constant(0, domain=self.V.ufl_domain())
 ```
 
 The `Poisson.solve` function can now be executed by giving the module 
@@ -86,7 +86,7 @@ the appropriate vector input corresponding to the input templates declared in
 template `Constant(0)` is simply a scalar. 
 
 ```python
-# Construct the FEniCS model
+# Construct the PDE model
 poisson = Poisson()
 
 # Create N sets of input
@@ -119,21 +119,8 @@ dJdg = g.grad
 ```
 
 ## Developing
-Install dependencies
+Some of the tests are set up to test MPI-parallelization
 
 ```bash
-conda env create -n torch-fenics -f environment.yml
-conda activate torch-fenics
-```
-
-Install package in editable mode
-
-```python
-pip install -e .[test]
-```
-
-The unit-tests can then be run as follows
-
-```bash
-python -m pytest tests
+mpiexec -np 3 pytest tests
 ```
