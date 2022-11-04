@@ -11,7 +11,6 @@ from ufl import inner, grad, dx, sin, pi
 
 from firedrake import logging
 from firedrake.logging import logger
-logging.set_log_level(logging.INFO)
 
 from torch_adjoint import FiredrakeModule
 from torch_adjoint.util import gather_and_reshape, to_firedrake
@@ -83,6 +82,7 @@ class Poisson(FiredrakeModule):
         self.J = lambda u, f: fd.assemble(inner(u-self.u_target, u-self.u_target)*dx + 0.5*self.alpha*f**2*dx)
 
     def solve_poisson(self, f):
+        logger.debug("Solving Poisson...")
         # Construct linear form
         L = f * self.v * dx
 
@@ -92,41 +92,37 @@ class Poisson(FiredrakeModule):
         # Solve the Poisson equation
         u = fd.Function(self.V)
         fd.solve(self.a == L, u, bc)
+        logger.debug("Done solving")
         return u
 
     def solve(self, f):
         u = self.solve_poisson(f)
 
+        logger.debug(u.dat.data)
+
         # Return the functional
-        return self.J(u, f)
+        # return self.J(u, f)
+        loss = self.J(u, f)
+        logger.debug(f"Loss {loss}")
+        return loss
 
     def input_templates(self):
         # Declare templates for the inputs to Poisson.solve
         return fd.Function(self.V)
 
-
-class ParameterVec(torch.nn.Module):
-    "A dummy module for optimizing a specific vector"
-
-    def __init__(self, vec):
-        super().__init__()
-        self.vec = torch.nn.Parameter(torch.empty((*vec.shape, 1), dtype=torch.float64))
-        print(self.vec.shape)
-
-    def forward(self, x):
-        return self.vec
-
 if __name__ == '__main__':
+
+    logging.set_log_level(logging.INFO)
+
     # Construct the Firedrake model
     poisson = Poisson()
     mesh = poisson.V.ufl_domain()
 
-    # Construct the neural net
     model = MLP(
         mesh,
-        num_hidden_layers=1,
-        hidden_layers_size=1024,
-        activation=torch.relu
+        num_hidden_layers=2,
+        hidden_layers_size=64,
+        activation=torch.tanh
     )
 
     logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters())}")
@@ -137,8 +133,8 @@ if __name__ == '__main__':
         requires_grad=True
     )
 
-    opt = torch.optim.LBFGS(model.parameters(), lr=1)
-    # opt = torch.optim.Adam(model.parameters(), lr=1e-6)
+    # opt = torch.optim.LBFGS(model.parameters(), lr=1)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-2)
 
     n_steps = 1000
     tol = 1e-6
@@ -167,16 +163,14 @@ if __name__ == '__main__':
         done = abs(1 - J/prevJ) < tol
         prevJ = J
 
-        if i%1 == 0 or done:
+        if i%10 == 0 or done:
             f_opt.rename('f')
             f_analytic = fd.interpolate(poisson.f_analytic, poisson.V)
             f_analytic.rename('f_a')
             u_opt.rename('u')
             u_analytic = fd.interpolate(poisson.u_analytic, poisson.V)
             u_analytic.rename('u_a')
-            u_target = fd.interpolate(poisson.u_target, poisson.V)
-            u_target.rename('u_t')
-            pvd.write(f_opt, f_analytic, u_opt, u_analytic, u_target)
+            pvd.write(f_opt, f_analytic, u_opt, u_analytic)
 
         if done:
             break
