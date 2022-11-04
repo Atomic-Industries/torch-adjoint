@@ -1,9 +1,9 @@
 import numpy as np
 import torch
-# Import fenics and override necessary data structures with fenics_adjoint
 import firedrake as fd
 import firedrake_adjoint as fda
 import pyadjoint
+import pytest
 
 from ufl import inner, grad, dx, div, sin, pi
 
@@ -62,6 +62,7 @@ def pyadjoint_grads(model, inp):
     return tuple([dJdx.values() for dJdx in grads])
 
 
+@pytest.mark.parallel(nprocs=2)
 def test_poisson_grads():
     # Construct the Firedrake model
     model = Poisson()
