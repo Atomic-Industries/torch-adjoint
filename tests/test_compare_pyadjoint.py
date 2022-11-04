@@ -82,4 +82,4 @@ def test_poisson_grads():
 
 
 if __name__=="__main__":
-    test_stokes_grads()
+    test_poisson_grads()
